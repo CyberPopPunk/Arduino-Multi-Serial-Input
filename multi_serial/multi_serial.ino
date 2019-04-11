@@ -5,11 +5,13 @@
 
 /*
     TODO:
-    1. REFINE COUNTDOWN/COUNTUP FOR TIMER
-    2. ADD GLITCH FUNCTIONALITY to input parse
-    3. SETUP LIGHT INPUT
-    4. SWITCH STATEMENT FOR INPUT PARSE
-    5. DOCSTRINGS!
+    1. ADD GLITCH FUNCTIONALITY to input parse
+    2. SETUP LIGHT INPUT
+    3. DOCSTRINGS!
+    4. Write a string parsing loop for interpreting serial input.
+    5. input and execution into separate functions
+    6. open/closed for display and doors
+    7.
 */
 
 
@@ -32,7 +34,6 @@ int serial_seconds;
 String inputString = "";
 bool stringComplete = false;
 
-
 //************ DOOR VARIABLES
 bool door_open;
 
@@ -41,7 +42,7 @@ void setup() {
   Serial.println("Clock Starting!");
 
   //reserve 200 bytes for the Serial input string
-  inputString.reserve(200);
+  inputString.reserve(20);
 
   //initialize clock display at I2C address from above
   clockDisplay.begin(DISPLAY_ADDRESS);
@@ -51,17 +52,21 @@ void setup() {
 }
 
 void loop() {
-  /*
-    if (stringComplete) {
+  if (stringComplete) {
     inputParse(inputString);
     reset_values();
-    }
-  */
-  /*setSegDisplay(3, 45);
-    runTimer(-10, 500);
-  */
-  error();
+  }
+  clearDisplay();
+  //setSegDisplay(5, 00);
+  //runTimer(30, 250);
+  //error();
 }
+
+void clearDisplay() {
+  clockDisplay.clear();
+  clockDisplay.writeDisplay();
+}
+
 void setSegDisplay(int minutes, int seconds) {
 
   //makes the input time formatted for display (add two 0 spaces to left digits)
@@ -152,11 +157,15 @@ void haywire(int duration) {
       blank();
       delay(random(25, 80));
       if (random(10) > 4) {
-        //clockDisplay.print(0xERR, HEX);
+        error();
       }
+      delay(random(20, 80));
     }
     duration -= 1;
   }
+  error();
+  delay(2000);
+  clearDisplay();
 }
 
 void blank() {
@@ -165,8 +174,7 @@ void blank() {
 }
 void error() {
   //displays Err. on clock
-  
-  // writeDigitRaw() bitmask lelgend [B, decimal,mid,top_left,bot_left,bottom, bot_right, top_right, top]
+  // writeDigitRaw() bitmask legend [B, decimal,mid,top_left,bot_left,bottom, bot_right, top_right, top]
   // write 'Err.'
   clockDisplay.writeDigitRaw(0, B01111001);
   clockDisplay.writeDigitRaw(1, B01010000);
@@ -175,23 +183,19 @@ void error() {
   clockDisplay.writeDisplay();
 }
 
-void timeConvert(int total_sec) {
-  Serial.println("Total Seconds Input:");
-  Serial.println(total_sec);
+void secToMin(int total_sec) {
   serial_minutes = total_sec / 60;
   serial_seconds = total_sec % 60;
-  Serial.print("Serial Minutes: ");
-  Serial.print(serial_minutes);
-  Serial.print("       Serial Seconds: ");
-  Serial.println(serial_seconds);
 }
 
 void serialEvent() {
   while (Serial.available() > 0) {
     char inChar = (char)Serial.read();
-    //add it to input stirng
-    inputString += inChar;
-    if ( inChar == '\n') {
+    //add it to input stirng if not finished
+    if (inChar != '\n') {
+      inputString += inChar;
+    }
+    else {
       Serial.print("Serial Input Complete, Input String is: ");
       Serial.println(inputString);
       stringComplete = true;
@@ -200,37 +204,63 @@ void serialEvent() {
 }
 
 void inputParse(String parseString) {
+  int firstComma;
+  int secondComma;
+  int thirdComma;
+  firstComma = parseString.indexOf(',');
+  secondComma = parseString.indexOf(',', firstComma + 1);
+  thirdComma = parseString.indexOf(',', secondComma + 1);
+
+  char inputType = parseString.charAt(0);
+  String input1 = parseString.substring(1, firstComma);
+  String input2 = parseString.substring(firstComma + 1, secondComma);
+  String input3 = parseString.substring(secondComma + 1, thirdComma);
+
+  String input_array[] = {input1, input2, input3};
+
 
   Serial.println("Parsing input...");
   ///****************************   TIMER INPUT
-  if ( parseString[0] == 'T') {
-    Serial.println("Input is Timer Tnstructions!");
-    int clock_set_test = parseString.substring(1).toInt();
-    timeConvert(clock_set_test);
-    setSegDisplay(serial_minutes, serial_seconds);
-  }
+  //switch (parseString[0]) {
+  switch (inputType) {
+    case 'T':
+      Serial.println("Input is Timer Tnstructions!");
+      int clockSet;
+      clockSet = parseString.substring(1, firstComma).toInt();
+      Serial.print("clockSet: ");
+      Serial.println(clockSet);
+      secToMin(clockSet);
 
-  //*****************************   LIGHT INPUT
-  else if (parseString[0] == 'L') {
-    Serial.print("INPUT IS LIGHT DATA!");
-    Serial.println("...But you haven't done anything with this yet!");
-  }
+      int clockMovement;
+      clockMovement = parseString.substring(firstComma + 1, secondComma).toInt(); // +1 offsets to align string index
+      Serial.print("     clockMovement: ");
+      Serial.println(clockMovement);
 
-  //*****************************   DOOR INPUT
-  else if (parseString[0] == 'D') {
-    Serial.println("INPUT IS DOOR DATA!");
-    if (parseString.substring(1).toInt() == 0) {
-      door_open = false;
-    }
-    else if (parseString.substring(1).toInt() == 1) {
-      door_open = true;
-    }
-    if (door_open) {
-      Serial.print("Doors Unlocked!");
-    }
-    else {
-      Serial.print("Doors Locked!");
-    }
+      int clockSpeed;
+      clockSpeed = parseString.substring(secondComma + 1, thirdComma).toInt(); // +1 offsets to align string index
+      Serial.print("clockSpeed: ");
+      Serial.println(clockSpeed);
+
+      //// Setting Inputs
+      setSegDisplay(serial_minutes, serial_seconds);
+      runTimer(clockMovement, clockSpeed);
+      break;
+
+    case 'L':
+      Serial.print("INPUT IS LIGHT DATA!");
+      Serial.println("...But you haven't done anything with this yet!");
+      break;
+
+    case 'D':
+      Serial.println("INPUT IS DOOR DATA!");
+      if (parseString.substring(1).toInt() == 0) {
+        door_open = false;
+        Serial.println("Doors Locked!");
+      }
+      else if (parseString.substring(1).toInt() == 1) {
+        door_open = true;
+        Serial.println("Doors Unlocked!");
+      }
   }
 }
 
